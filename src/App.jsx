@@ -60,7 +60,51 @@ function transposeText(text, semitones, targetKey) {
   }).join('\n');
 }
 
-// ── Colored output renderer ────────────────────────────────────
+// ── Auto-detect key ────────────────────────────────────────────
+// Scores each possible key against the chords found in the text.
+// The key whose scale contains the most of the song's chords wins.
+
+const KEY_PROFILES = {
+  'C': ['C','Dm','Em','F','G','Am','Bdim'],
+  'C#':['C#','D#m','Fm','F#','G#','A#m','Cdim'],
+  'D': ['D','Em','F#m','G','A','Bm','C#dim'],
+  'Eb':['Eb','Fm','Gm','Ab','Bb','Cm','Ddim'],
+  'E': ['E','F#m','G#m','A','B','C#m','D#dim'],
+  'F': ['F','Gm','Am','Bb','C','Dm','Edim'],
+  'F#':['F#','G#m','A#m','B','C#','D#m','Fdim'],
+  'G': ['G','Am','Bm','C','D','Em','F#dim'],
+  'Ab':['Ab','Bbm','Cm','Db','Eb','Fm','Gdim'],
+  'A': ['A','Bm','C#m','D','E','F#m','G#dim'],
+  'Bb':['Bb','Cm','Dm','Eb','F','Gm','Adim'],
+  'B': ['B','C#m','D#m','E','F#','G#m','A#dim'],
+};
+
+function detectKey(text) {
+  // Collect all chord tokens from chord lines
+  const chords = [];
+  text.split('\n').forEach(line => {
+    if (!isChordLine(line)) return;
+    const matches = line.match(/[A-G][#b]?(?:maj|min|m|M|sus|aug|dim|add|no)?(?:\d+)?(?:\/[A-G][#b]?)?/g);
+    if (matches) chords.push(...matches);
+  });
+  if (!chords.length) return null;
+
+  // Strip suffixes to get just root notes
+  const roots = chords.map(c => {
+    const m = c.match(/^([A-G][#b]?)/);
+    return m ? m[1] : null;
+  }).filter(Boolean);
+
+  // Score each key
+  let bestKey = 'C', bestScore = -1;
+  Object.entries(KEY_PROFILES).forEach(([key, scale]) => {
+    // Scale roots only
+    const scaleRoots = scale.map(c => c.match(/^([A-G][#b]?)/)?.[1]);
+    const score = roots.filter(r => scaleRoots.includes(r)).length;
+    if (score > bestScore) { bestScore = score; bestKey = key; }
+  });
+  return bestKey;
+}
 // Chord lines: each chord token is a clickable button that opens
 // the diagram modal. Lyric lines are plain white text.
 const CHORD_SPLIT_REGEX = /([A-G][#b]?(?:maj|min|m|M|sus|aug|dim|add|no)?(?:\d+)?(?:\/[A-G][#b]?)?)/g;
@@ -253,9 +297,10 @@ export default function App() {
   const [savedSongs, setSavedSongs]     = useState(loadSongs);
   const [status, setStatus]             = useState({ type: '', message: '' });
   const [dragging, setDragging]         = useState(false);
-  const [showSaved, setShowSaved]       = useState(false);
-  const [fullscreen, setFullscreen]     = useState(false);
+  const [showSaved, setShowSaved]         = useState(false);
+  const [fullscreen, setFullscreen]       = useState(false);
   const [selectedChord, setSelectedChord] = useState(null);
+  const [copied, setCopied]               = useState(false);
 
   useEffect(() => {
     if (!originalText) return;
@@ -268,10 +313,12 @@ export default function App() {
     setStatus({ type: 'loading', message: 'Reading chords from screenshot...' });
     try {
       const text = await extractChordsFromImage(file);
+      const detectedKey = detectKey(text) || 'C';
       setOriginalText(text); setDisplayText(text);
-      setTargetKey(originalKey); setSemitones(0);
+      setOriginalKey(detectedKey);
+      setTargetKey(detectedKey); setSemitones(0);
       setSongTitle(file.name.replace(/\.[^/.]+$/, '') || 'Untitled');
-      setStatus({ type: 'success', message: 'Chords extracted! Set the original key and transpose.' });
+      setStatus({ type: 'success', message: `Chords extracted! Detected key: ${detectedKey}. Adjust if needed.` });
     } catch (e) { setStatus({ type: 'error', message: e.message }); }
   }, [originalKey]);
 
@@ -301,6 +348,37 @@ export default function App() {
     setSavedSongs(updated); saveSongs(updated);
   };
 
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(displayText).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const printSheet = () => {
+    const win = window.open('', '_blank');
+    win.document.write(`
+      <html><head><title>${songTitle || 'Chord Sheet'}</title>
+      <style>
+        body { font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.8;
+               padding: 40px; color: #000; background: #fff; }
+        h2 { font-family: Georgia, serif; margin-bottom: 4px; }
+        .meta { font-size: 12px; color: #666; margin-bottom: 24px; }
+        .chord-line { color: #8a6a00; font-weight: bold; }
+        .lyric-line { color: #000; }
+        pre { white-space: pre; margin: 0; }
+      </style></head><body>
+      <h2>${songTitle || 'Chord Sheet'}</h2>
+      <div class="meta">${currentShift === 0 ? `Key of ${originalKey}` : mode === 'key' ? `Transposed: ${originalKey} → ${targetKey}` : `Transposed: ${currentShift > 0 ? '+' : ''}${currentShift} semitones`}</div>
+      ${displayText.split('\n').map(line =>
+        `<pre class="${isChordLine(line) ? 'chord-line' : 'lyric-line'}">${line || ' '}</pre>`
+      ).join('')}
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
   const hasContent = !!originalText;
   const currentShift = mode === 'key' ? getSemitonesBetweenKeys(originalKey, targetKey) : semitones;
 
@@ -316,7 +394,26 @@ export default function App() {
 
       <header style={s.header}>
         <div style={s.headerLeft}>
-          <span style={s.logo}>♭</span>
+          {/* SVG Logo: stylized flat symbol with gold gradient and shadow */}
+          <svg width="44" height="52" viewBox="0 0 44 52" fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
+            <defs>
+              <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#e8c96a"/>
+                <stop offset="100%" stopColor="#a07820"/>
+              </linearGradient>
+              <filter id="glow">
+                <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#c8a84b" floodOpacity="0.5"/>
+              </filter>
+            </defs>
+            {/* Stem */}
+            <rect x="10" y="4" width="5" height="38" rx="2.5" fill="url(#goldGrad)" filter="url(#glow)"/>
+            {/* Ball of the flat */}
+            <ellipse cx="19" cy="36" rx="9" ry="7" fill="url(#goldGrad)" filter="url(#glow)"/>
+            {/* Inner cutout to make it look like a real flat symbol */}
+            <ellipse cx="19" cy="35" rx="5" ry="4" fill="#0f0e0d"/>
+            {/* Shine */}
+            <ellipse cx="16" cy="32" rx="2" ry="1.5" fill="#f0d97a" opacity="0.4"/>
+          </svg>
           <div>
             <h1 style={s.title}>Chord Transposer</h1>
             <p style={s.subtitle}>Upload a screenshot · transpose instantly</p>
@@ -425,10 +522,18 @@ export default function App() {
                       : `${currentShift > 0 ? '+' : ''}${currentShift} semitones from ${originalKey}`}
                   </span>
                 </div>
-                <button style={s.expandBtn} onClick={() => setFullscreen(!fullscreen)}
-                  title={fullscreen ? 'Exit fullscreen' : 'Expand'}>
-                  {fullscreen ? '✕' : '⤢'}
-                </button>
+                <div style={s.outputHeaderRight}>
+                  <button style={s.expandBtn} onClick={copyToClipboard} title="Copy to clipboard">
+                    {copied ? '✓' : '⎘'}
+                  </button>
+                  <button style={s.expandBtn} onClick={printSheet} title="Print / Export">
+                    ⎙
+                  </button>
+                  <button style={s.expandBtn} onClick={() => setFullscreen(!fullscreen)}
+                    title={fullscreen ? 'Exit fullscreen' : 'Expand'}>
+                    {fullscreen ? '✕' : '⤢'}
+                  </button>
+                </div>
               </div>
               <div style={s.outputBody}>
                 <p style={{ margin:'0 0 12px', fontSize:11, color:'#4a4438', fontFamily:'sans-serif', letterSpacing:'0.06em' }}>
