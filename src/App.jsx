@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ChordDiagram from "./ChordDiagram.jsx";
 
 // ── Music Theory Core ──────────────────────────────────────────
 const SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -60,15 +61,38 @@ function transposeText(text, semitones, targetKey) {
 }
 
 // ── Colored output renderer ────────────────────────────────────
-function ColoredSheet({ text }) {
+// Chord lines: each chord token is a clickable button that opens
+// the diagram modal. Lyric lines are plain white text.
+const CHORD_SPLIT_REGEX = /([A-G][#b]?(?:maj|min|m|M|sus|aug|dim|add|no)?(?:\d+)?(?:\/[A-G][#b]?)?)/g;
+
+function ColoredSheet({ text, onChordClick }) {
   if (!text) return null;
   return (
     <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, lineHeight: 1.9, whiteSpace: 'pre' }}>
-      {text.split('\n').map((line, i) => (
-        <div key={i} style={{ color: isChordLine(line) ? '#c8a84b' : '#e8e0d0' }}>
-          {line || '\u00A0'}
-        </div>
-      ))}
+      {text.split('\n').map((line, i) => {
+        if (!isChordLine(line)) {
+          return <div key={i} style={{ color: '#e8e0d0' }}>{line || '\u00A0'}</div>;
+        }
+        // Split line into chord tokens and spaces, render chords as buttons
+        const parts = line.split(CHORD_SPLIT_REGEX);
+        return (
+          <div key={i}>
+            {parts.map((part, j) => {
+              if (CHORD_TOKEN_REGEX.test(part)) {
+                return (
+                  <button key={j} onClick={() => onChordClick(part)} style={{
+                    background: 'transparent', border: 'none', padding: 0,
+                    color: '#c8a84b', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: 'inherit', textDecoration: 'underline dotted',
+                    textUnderlineOffset: 3,
+                  }}>{part}</button>
+                );
+              }
+              return <span key={j}>{part}</span>;
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -231,6 +255,7 @@ export default function App() {
   const [dragging, setDragging]         = useState(false);
   const [showSaved, setShowSaved]       = useState(false);
   const [fullscreen, setFullscreen]     = useState(false);
+  const [selectedChord, setSelectedChord] = useState(null);
 
   useEffect(() => {
     if (!originalText) return;
@@ -406,7 +431,7 @@ export default function App() {
                 </button>
               </div>
               <div style={s.outputBody}>
-                <ColoredSheet text={displayText} />
+                <ColoredSheet text={displayText} onChordClick={setSelectedChord} />
               </div>
             </>
           ) : (
@@ -420,18 +445,18 @@ export default function App() {
       </main>
 
       <footer style={{ position: 'relative', zIndex: 10, textAlign: 'center', padding: '20px 28px', borderTop: '1px solid #2a2820', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <a
-          href="https://github.com/Jisjai/chord-transposer/issues"
-          target="_blank"
-          rel="noreferrer"
-          style={{ fontSize: 11, color: '#6b6456', fontFamily: 'sans-serif', textDecoration: 'none', letterSpacing: '0.08em' }}
-        >
-          <span>🐛</span> Found a bug or have feedback? Open an issue on GitHub
+        <a href="https://github.com/Jisjai/chord-transposer/issues" target="_blank" rel="noreferrer"
+          style={{ fontSize: 11, color: '#6b6456', fontFamily: 'sans-serif', textDecoration: 'none', letterSpacing: '0.08em' }}>
+          Found a bug or have feedback? Open an issue on GitHub
         </a>
         <span style={{ fontSize: 11, color: '#3a3428', fontFamily: 'sans-serif', letterSpacing: '0.08em' }}>
           Made by Jisjai Bloemendal
         </span>
       </footer>
+
+      {selectedChord && (
+        <ChordDiagram chord={selectedChord} onClose={() => setSelectedChord(null)} />
+      )}
     </div>
   );
 }
