@@ -431,6 +431,9 @@ export default function App() {
                 </button>
               </div>
               <div style={s.outputBody}>
+                <p style={{ margin:'0 0 12px', fontSize:11, color:'#4a4438', fontFamily:'sans-serif', letterSpacing:'0.06em' }}>
+                  Click any chord to see how to play it
+                </p>
                 <ColoredSheet text={displayText} onChordClick={setSelectedChord} />
               </div>
             </>
