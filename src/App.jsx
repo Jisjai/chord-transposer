@@ -88,12 +88,33 @@ Extract the full content and return it as plain text, following these rules:
 6. If you cannot find any chords in the image, respond with exactly: NO_CHORDS_FOUND
 Return only the extracted text, nothing else.`;
 
+// Compress image to max 1000px wide at 80% quality before sending to API
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1000;
+      const scale = img.width > MAX ? MAX / img.width : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Compression failed')), 'image/jpeg', 0.8);
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = url;
+  });
+}
+
 async function extractChordsFromImage(imageFile) {
+  const compressed = await compressImage(imageFile);
   const base64Image = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload  = () => resolve(reader.result.split(',')[1]);
     reader.onerror = () => reject(new Error('Failed to read image'));
-    reader.readAsDataURL(imageFile);
+    reader.readAsDataURL(compressed);
   });
 
   // ← KEY CHANGE FROM DEVELOPMENT VERSION:
@@ -108,7 +129,7 @@ async function extractChordsFromImage(imageFile) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: imageFile.type || 'image/jpeg', data: base64Image } },
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
           { type: 'text', text: EXTRACTION_PROMPT },
         ],
       }],
@@ -144,7 +165,7 @@ const textFaint   = '#3a3428';
 const s = {
   app: { minHeight: '100vh', background: bg, color: textPrimary, fontFamily: "Georgia, 'Times New Roman', serif", position: 'relative' },
   bgGlow: { position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none', backgroundImage: `radial-gradient(ellipse at 15% 15%, #1c1505 0%, transparent 55%), radial-gradient(ellipse at 85% 85%, #050f05 0%, transparent 55%)` },
-  header: { position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 28px', borderBottom: `1px solid ${border}` },
+  header: { position: 'relative', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${border}` },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 14 },
   headerRight: { display: 'flex', gap: 8 },
   logo: { fontSize: 44, color: gold, lineHeight: 1, userSelect: 'none' },
@@ -157,8 +178,8 @@ const s = {
   statusLoading: { background: '#1a1608', border: `1px solid ${gold}`, color: gold },
   statusError:   { background: '#1a0808', border: '1px solid #c84b4b', color: '#c84b4b' },
   statusSuccess: { background: '#081a08', border: '1px solid #4bc84b', color: '#4bc84b' },
-  main: { position: 'relative', zIndex: 10, display: 'flex', gap: 20, padding: '20px 28px', minHeight: 'calc(100vh - 130px)' },
-  leftCol: { width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 14 },
+  main: { position: 'relative', zIndex: 10, display: 'flex', gap: 20, padding: '20px 28px', minHeight: 'calc(100vh - 130px)', flexWrap: 'wrap' },
+  leftCol: { width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 },
   dropZone: { border: `2px dashed ${border}`, borderRadius: 12, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: bg2, transition: 'all 0.2s' },
   dropZoneActive: { borderColor: gold, background: '#1a1608' },
   dropIcon: { fontSize: 32, marginBottom: 8 },
@@ -258,9 +279,11 @@ export default function App() {
   const hasContent = !!originalText;
   const currentShift = mode === 'key' ? getSemitonesBetweenKeys(originalKey, targetKey) : semitones;
 
+  const isMobile = window.innerWidth < 600;
+
   const rightColStyle = fullscreen
     ? { position: 'fixed', top: 73, left: 0, right: 0, bottom: 0, zIndex: 100, background: bg2, borderTop: `1px solid ${border}`, display: 'flex', flexDirection: 'column' }
-    : { flex: 1, background: bg2, border: `1px solid ${border}`, borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden' };
+    : { flex: 1, minWidth: isMobile ? '100%' : 300, background: bg2, border: `1px solid ${border}`, borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: isMobile ? 400 : undefined };
 
   return (
     <div style={s.app}>
@@ -392,18 +415,18 @@ export default function App() {
               <p style={s.emptyText}>Transposed chords appear here</p>
               <p style={s.emptyHint}>Upload a chord sheet screenshot to get started</p>
             </div>
-            
           )}
         </div>
       </main>
+
       <footer style={{ position: 'relative', zIndex: 10, textAlign: 'center', padding: '20px 28px', borderTop: '1px solid #2a2820', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        
+        <a
           href="https://github.com/Jisjai/chord-transposer/issues"
           target="_blank"
           rel="noreferrer"
           style={{ fontSize: 11, color: '#6b6456', fontFamily: 'sans-serif', textDecoration: 'none', letterSpacing: '0.08em' }}
         >
-          🐛 Found a bug or have feedback? Open an issue on GitHub
+          <span>🐛</span> Found a bug or have feedback? Open an issue on GitHub
         </a>
         <span style={{ fontSize: 11, color: '#3a3428', fontFamily: 'sans-serif', letterSpacing: '0.08em' }}>
           Made by Jisjai Bloemendal
