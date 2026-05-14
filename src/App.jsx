@@ -392,9 +392,23 @@ export default function App() {
               <p style={s.emptyText}>Transposed chords appear here</p>
               <p style={s.emptyHint}>Upload a chord sheet screenshot to get started</p>
             </div>
+            
           )}
         </div>
       </main>
+      <footer style={{ position: 'relative', zIndex: 10, textAlign: 'center', padding: '20px 28px', borderTop: '1px solid #2a2820', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        
+          href="https://github.com/Jisjai/chord-transposer/issues"
+          target="_blank"
+          rel="noreferrer"
+          style={{ fontSize: 11, color: '#6b6456', fontFamily: 'sans-serif', textDecoration: 'none', letterSpacing: '0.08em' }}
+        >
+          🐛 Found a bug or have feedback? Open an issue on GitHub
+        </a>
+        <span style={{ fontSize: 11, color: '#3a3428', fontFamily: 'sans-serif', letterSpacing: '0.08em' }}>
+          Made by Jisjai Bloemendal
+        </span>
+      </footer>
     </div>
   );
 }
