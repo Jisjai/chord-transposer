@@ -248,11 +248,11 @@ const s = {
   statusSuccess: { background: '#081a08', border: '1px solid #4bc84b', color: '#4bc84b' },
   main: { position: 'relative', zIndex: 10, display: 'flex', gap: 20, padding: '20px 28px', minHeight: 'calc(100vh - 130px)', flexWrap: 'wrap' },
   leftCol: { width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 },
-  dropZone: { border: `2px dashed ${border}`, borderRadius: 12, padding: '28px 16px', textAlign: 'center', cursor: 'pointer', background: bg2, transition: 'all 0.2s' },
-  dropZoneActive: { borderColor: gold, background: '#1a1608' },
-  dropIcon: { fontSize: 32, marginBottom: 8 },
-  dropText: { margin: '0 0 4px', fontSize: 14, color: textPrimary },
-  dropHint: { margin: 0, fontSize: 11, color: textMuted, fontFamily: 'sans-serif' },
+  dropZone: { border: `1px solid ${border}`, borderRadius: 12, padding: '36px 20px', textAlign: 'center', cursor: 'pointer', background: bg2, transition: 'all 0.2s' },
+  dropZoneActive: { borderColor: '#4a4438', background: bg3 },
+  dropIcon: { marginBottom: 14 },
+  dropText: { margin: '0 0 6px', fontSize: 13, color: textMuted, letterSpacing: '0.06em', fontFamily: 'sans-serif' },
+  dropHint: { margin: 0, fontSize: 11, color: textFaint, fontFamily: 'sans-serif', letterSpacing: '0.04em' },
   controls: { display: 'flex', flexDirection: 'column', gap: 14 },
   controlGroup: { display: 'flex', flexDirection: 'column', gap: 7 },
   label: { fontSize: 10, letterSpacing: '0.14em', color: textMuted, textTransform: 'uppercase', fontFamily: 'sans-serif' },
@@ -276,10 +276,10 @@ const s = {
   outputHeaderRight: { display: 'flex', alignItems: 'center', gap: 8 },
   expandBtn: { background: 'transparent', border: `1px solid ${border}`, borderRadius: 6, color: textMuted, padding: '5px 9px', cursor: 'pointer', fontSize: 14, lineHeight: 1 },
   outputBody: { flex: 1, padding: '20px 24px', overflowX: 'auto', overflowY: 'auto' },
-  empty: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  emptyIcon: { fontSize: 44 },
-  emptyText: { margin: 0, fontSize: 15, color: textMuted },
-  emptyHint: { margin: 0, fontSize: 12, color: textFaint, fontFamily: 'sans-serif' },
+  empty: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  emptyIcon: { opacity: 0.15 },
+  emptyText: { margin: 0, fontSize: 13, color: textMuted, letterSpacing: '0.08em', fontFamily: 'sans-serif' },
+  emptyHint: { margin: 0, fontSize: 11, color: textFaint, fontFamily: 'sans-serif', letterSpacing: '0.04em' },
   savedRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: `1px solid ${bg2}` },
   savedTitle: { fontSize: 13, color: textPrimary },
   savedMeta: { fontSize: 11, color: textFaint, fontFamily: 'sans-serif' },
@@ -463,9 +463,15 @@ export default function App() {
               onClick={() => document.getElementById('fileInput').click()}>
               <input id="fileInput" type="file" accept="image/*" style={{display:'none'}}
                 onChange={e => handleImage(e.target.files[0])} />
-              <div style={s.dropIcon}>📸</div>
-              <p style={s.dropText}>Drop screenshot here</p>
-              <p style={s.dropHint}>or click to browse · jpg, png, webp</p>
+              <div style={s.dropIcon}>
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="4" y="20" width="24" height="2" rx="1" fill="#3a3428"/>
+                  <rect x="4" y="24" width="24" height="2" rx="1" fill="#2a2820"/>
+                  <path d="M16 4 L16 18 M10 10 L16 4 L22 10" stroke="#4a4438" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <p style={s.dropText}>Upload a chord sheet</p>
+              <p style={s.dropHint}>drag and drop or click to browse</p>
             </div>
 
             {hasContent && (
@@ -544,9 +550,19 @@ export default function App() {
             </>
           ) : (
             <div style={s.empty}>
-              <span style={s.emptyIcon}>🎸</span>
-              <p style={s.emptyText}>Transposed chords appear here</p>
-              <p style={s.emptyHint}>Upload a chord sheet screenshot to get started</p>
+              <div style={s.emptyIcon}>
+                <svg width="64" height="40" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <line x1="4" y1="8"  x2="60" y2="8"  stroke="#2a2820" strokeWidth="1.5"/>
+                  <line x1="4" y1="16" x2="60" y2="16" stroke="#2a2820" strokeWidth="1.5"/>
+                  <line x1="4" y1="24" x2="60" y2="24" stroke="#2a2820" strokeWidth="1.5"/>
+                  <line x1="4" y1="32" x2="60" y2="32" stroke="#2a2820" strokeWidth="1.5"/>
+                  <rect x="20" y="18" width="10" height="2" rx="1" fill="#3a3428"/>
+                  <rect x="36" y="12" width="10" height="2" rx="1" fill="#3a3428"/>
+                  <rect x="44" y="22" width="8"  height="2" rx="1" fill="#3a3428"/>
+                </svg>
+              </div>
+              <p style={s.emptyText}>Your transposed sheet will appear here</p>
+              <p style={s.emptyHint}>upload a screenshot to get started</p>
             </div>
           )}
         </div>
