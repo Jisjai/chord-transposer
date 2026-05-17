@@ -289,6 +289,121 @@ function PianoDiagram({ chordName }) {
   );
 }
 
+// ── Audio Engine ───────────────────────────────────────────────
+// Uses the Web Audio API — built into every browser, no libraries needed.
+// Piano: layered sine + triangle waves with soft attack and decay
+// Guitar: sawtooth waves with a sharp attack and faster decay to mimic a pluck
+
+const NOTE_FREQ = {
+  'C':261.63,'C#':277.18,'Db':277.18,'D':293.66,'D#':311.13,'Eb':311.13,
+  'E':329.63,'F':349.23,'F#':369.99,'Gb':369.99,'G':392.00,'G#':415.30,
+  'Ab':415.30,'A':440.00,'A#':466.16,'Bb':466.16,'B':493.88,
+};
+
+// Get frequencies for all notes in a chord
+function getChordFrequencies(chordName) {
+  const parsed = chordName.match(/^([A-G][#b]?)(.*?)(?:\/([A-G][#b]?))?$/);
+  if (!parsed) return [];
+  const root = parsed[1];
+  const suffix = parsed[2] || '';
+  const bass = parsed[3];
+
+  const intervals = {
+    '':     [0,4,7],
+    'm':    [0,3,7],
+    '7':    [0,4,7,10],
+    'maj7': [0,4,7,11],
+    'm7':   [0,3,7,10],
+    'sus2': [0,2,7],
+    'sus4': [0,5,7],
+    'dim':  [0,3,6],
+    'aug':  [0,4,8],
+  }[suffix] ?? [0,4,7];
+
+  const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const rootIdx = NOTES.indexOf(
+    NOTE_FREQ[root] ? root : Object.keys(NOTE_FREQ).find(k => NOTE_FREQ[k] === NOTE_FREQ[root])
+  );
+
+  const freqs = intervals.map(interval => {
+    const noteIdx = (rootIdx + interval) % 12;
+    const octaveShift = rootIdx + interval >= 12 ? 2 : 1;
+    return NOTE_FREQ[NOTES[noteIdx]] * octaveShift;
+  });
+
+  // Add bass note an octave lower if slash chord
+  if (bass && NOTE_FREQ[bass]) {
+    freqs.unshift(NOTE_FREQ[bass] * 0.5);
+  }
+
+  return freqs;
+}
+
+function playPianoChord(chordName) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const freqs = getChordFrequencies(chordName);
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.4, ctx.currentTime);
+  master.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5);
+  master.connect(ctx.destination);
+
+  freqs.forEach(freq => {
+    // Layer sine + triangle for a warmer piano-like tone
+    ['sine', 'triangle'].forEach((type, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(i === 0 ? 0.6 : 0.3, ctx.currentTime);
+      // Soft attack
+      gain.gain.linearRampToValueAtTime(i === 0 ? 0.7 : 0.35, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.2);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 2.5);
+    });
+  });
+
+  setTimeout(() => ctx.close(), 3000);
+}
+
+function playGuitarChord(chordName) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const freqs = getChordFrequencies(chordName);
+
+  // Strum effect: each string starts slightly after the previous
+  freqs.forEach((freq, i) => {
+    const strumDelay = i * 0.04; // 40ms between each string = natural strum
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    // Sawtooth + slight detune for a plucked string character
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + strumDelay);
+    osc.detune.setValueAtTime(Math.random() * 4 - 2, ctx.currentTime); // subtle humanization
+
+    // Sharp attack, faster decay than piano
+    gain.gain.setValueAtTime(0, ctx.currentTime + strumDelay);
+    gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + strumDelay + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + strumDelay + 1.4);
+
+    // Light lowpass filter to soften the sawtooth harshness
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2400, ctx.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + strumDelay);
+    osc.stop(ctx.currentTime + strumDelay + 1.6);
+  });
+
+  setTimeout(() => ctx.close(), 2500);
+}
+
 // ── Not Found ──────────────────────────────────────────────────
 function NotFound({ name, instrument }) {
   return (
@@ -301,7 +416,16 @@ function NotFound({ name, instrument }) {
 // ── Main Modal ─────────────────────────────────────────────────
 export default function ChordDiagram({ chord, onClose }) {
   const [instrument, setInstrument] = useState('guitar');
+  const [playing, setPlaying]       = useState(false);
   const displayChord = chord;
+
+  const playChord = () => {
+    if (playing) return;
+    setPlaying(true);
+    if (instrument === 'piano') playPianoChord(displayChord);
+    else playGuitarChord(displayChord);
+    setTimeout(() => setPlaying(false), instrument === 'piano' ? 2500 : 1800);
+  };
 
   return (
     <>
@@ -315,6 +439,7 @@ export default function ChordDiagram({ chord, onClose }) {
         background:'#141310', border:'1px solid #2a2820', borderRadius:16,
         padding:'24px', width:260, boxShadow:'0 20px 60px rgba(0,0,0,0.6)',
       }}>
+        {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
           <span style={{ fontSize:22, color:'#c8a84b', fontFamily:"Georgia,serif", letterSpacing:'0.04em' }}>
             {displayChord}
@@ -324,6 +449,8 @@ export default function ChordDiagram({ chord, onClose }) {
             borderRadius:6, color:'#6b6456', padding:'4px 9px', cursor:'pointer', fontSize:14,
           }}>✕</button>
         </div>
+
+        {/* Instrument toggle */}
         <div style={{ display:'flex', background:'#1a1916', border:'1px solid #2a2820', borderRadius:8, overflow:'hidden', marginBottom:20 }}>
           {['guitar','piano'].map(inst => (
             <button key={inst} onClick={() => setInstrument(inst)} style={{
@@ -333,11 +460,31 @@ export default function ChordDiagram({ chord, onClose }) {
             }}>{inst}</button>
           ))}
         </div>
+
+        {/* Diagram */}
         {instrument === 'guitar'
           ? <GuitarDiagram chordName={displayChord} />
           : <PianoDiagram  chordName={displayChord} />
         }
+
+        {/* Play button */}
+        <button onClick={playChord} style={{
+          width:'100%', marginTop:16, padding:'10px',
+          background: playing ? '#1a1916' : '#1e1c18',
+          border: `1px solid ${playing ? '#3a3428' : '#4a4438'}`,
+          borderRadius:8, cursor: playing ? 'default' : 'pointer',
+          color: playing ? '#4a4438' : '#a09880',
+          fontFamily:'sans-serif', fontSize:13,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          transition:'all 0.2s',
+        }}>
+          {playing
+            ? <><span style={{ fontSize:10 }}>●</span> playing...</>
+            : <><span style={{ fontSize:14 }}>▶</span> Play chord</>
+          }
+        </button>
       </div>
     </>
   );
 }
+
