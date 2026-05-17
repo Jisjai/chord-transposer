@@ -503,6 +503,12 @@ export default function ChordDiagram({ chord, onClose }) {
             : <><span style={{ fontSize:14 }}>▶</span> Play chord</>
           }
         </button>
+        <p style={{
+          margin:'10px 0 0', textAlign:'center',
+          fontSize:10, color:'#3a3428', fontFamily:'sans-serif', letterSpacing:'0.04em',
+        }}>
+          no sound? check your silent switch
+        </p>
       </div>
     </>
   );
