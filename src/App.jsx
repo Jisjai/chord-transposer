@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ChordDiagram from "./ChordDiagram.jsx";
+import Auth from "./Auth.jsx";
+import { supabase } from "./supabase.js";
 
 // ── Music Theory Core ──────────────────────────────────────────
 const SHARPS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -287,6 +289,7 @@ const s = {
 
 // ── App ────────────────────────────────────────────────────────
 export default function App() {
+  const [user, setUser]                 = useState(null);
   const [originalText, setOriginalText] = useState('');
   const [displayText, setDisplayText]   = useState('');
   const [originalKey, setOriginalKey]   = useState('C');
@@ -420,6 +423,7 @@ export default function App() {
           </div>
         </div>
         <div style={s.headerRight}>
+          <Auth onUserChange={setUser} />
           <button style={s.iconBtn} onClick={() => setShowSaved(!showSaved)}>
             🎵 {savedSongs.length > 0 && <span style={s.badge}>{savedSongs.length}</span>}
           </button>
