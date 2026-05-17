@@ -339,8 +339,9 @@ function getChordFrequencies(chordName) {
   return freqs;
 }
 
-function playPianoChord(chordName) {
+async function playPianoChord(chordName) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
   const freqs = getChordFrequencies(chordName);
   const master = ctx.createGain();
   master.gain.setValueAtTime(0.4, ctx.currentTime);
@@ -368,8 +369,9 @@ function playPianoChord(chordName) {
   setTimeout(() => ctx.close(), 3000);
 }
 
-function playGuitarChord(chordName) {
+async function playGuitarChord(chordName) {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
   const freqs = getChordFrequencies(chordName);
 
   // Strum effect: each string starts slightly after the previous
