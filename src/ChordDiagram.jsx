@@ -339,8 +339,7 @@ function getChordFrequencies(chordName) {
   return freqs;
 }
 
-async function playPianoChord(chordName) {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+async function playPianoChord(chordName, ctx) {
   await ctx.resume();
   const freqs = getChordFrequencies(chordName);
   const master = ctx.createGain();
@@ -366,11 +365,10 @@ async function playPianoChord(chordName) {
     });
   });
 
-  setTimeout(() => ctx.close(), 3000);
+  setTimeout(() => {}, 3000);
 }
 
-async function playGuitarChord(chordName) {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+async function playGuitarChord(chordName, ctx) {
   await ctx.resume();
   const freqs = getChordFrequencies(chordName);
 
@@ -403,7 +401,7 @@ async function playGuitarChord(chordName) {
     osc.stop(ctx.currentTime + strumDelay + 1.6);
   });
 
-  setTimeout(() => ctx.close(), 2500);
+  setTimeout(() => {}, 2500);
 }
 
 // ── Not Found ──────────────────────────────────────────────────
@@ -415,6 +413,23 @@ function NotFound({ name, instrument }) {
   );
 }
 
+// ── Shared AudioContext ────────────────────────────────────────
+// iOS Safari requires AudioContext to be created AND unlocked
+// synchronously within a direct user gesture (tap/click).
+// We keep one shared context and unlock it on first use.
+let sharedCtx = null;
+
+function getAudioContext() {
+  if (!sharedCtx) {
+    sharedCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  // Resume synchronously — this is the key iOS fix
+  if (sharedCtx.state === 'suspended') {
+    sharedCtx.resume();
+  }
+  return sharedCtx;
+}
+
 // ── Main Modal ─────────────────────────────────────────────────
 export default function ChordDiagram({ chord, onClose }) {
   const [instrument, setInstrument] = useState('guitar');
@@ -423,9 +438,12 @@ export default function ChordDiagram({ chord, onClose }) {
 
   const playChord = () => {
     if (playing) return;
+    // Get/create context synchronously inside the tap handler
+    // This is what iOS requires — no async, no await, no delay
+    const ctx = getAudioContext();
     setPlaying(true);
-    if (instrument === 'piano') playPianoChord(displayChord);
-    else playGuitarChord(displayChord);
+    if (instrument === 'piano') playPianoChord(displayChord, ctx);
+    else playGuitarChord(displayChord, ctx);
     setTimeout(() => setPlaying(false), instrument === 'piano' ? 2500 : 1800);
   };
 
