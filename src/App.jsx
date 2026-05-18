@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ChordDiagram from "./ChordDiagram.jsx";
 import Auth from "./Auth.jsx";
+import BuyCredits from "./BuyCredits.jsx";
 import { supabase } from "./supabase.js";
 
 // ── Music Theory Core ──────────────────────────────────────────
@@ -305,6 +306,20 @@ export default function App() {
   const [selectedChord, setSelectedChord] = useState(null);
   const [copied, setCopied]               = useState(false);
   const [uploadsRemaining, setUploadsRemaining] = useState(null);
+  const [showBuyCredits, setShowBuyCredits]     = useState(false);
+
+  // Show success message if returning from Stripe payment
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      const credits = params.get('credits');
+      setStatus({ type: 'success', message: `Payment successful! ${credits} uploads added to your account.` });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('payment') === 'cancelled') {
+      setStatus({ type: 'error', message: 'Payment cancelled.' });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     if (!originalText) return;
@@ -328,7 +343,12 @@ export default function App() {
       setSongTitle(file.name.replace(/\.[^/.]+$/, '') || 'Untitled');
       setUploadsRemaining(remaining);
       setStatus({ type: 'success', message: `Chords extracted! Detected key: ${detectedKey}. ${remaining} upload${remaining !== 1 ? 's' : ''} remaining today.` });
-    } catch (e) { setStatus({ type: 'error', message: e.message }); }
+    } catch (e) {
+      if (e.message.includes('Daily limit') || e.message.includes('limit reached')) {
+        setShowBuyCredits(true);
+      }
+      setStatus({ type: 'error', message: e.message });
+    }
   }, [originalKey, user]);
 
   const onDrop = useCallback((e) => {
@@ -552,7 +572,9 @@ export default function App() {
                     <div style={s.sliderLabels}><span>−6</span><span>0</span><span>+6</span></div>
                   </div>
                 )}
-                <button style={s.btnPrimary} onClick={saveSong}>💾 &nbsp;Save to device</button>
+                <button style={s.btnPrimary} onClick={saveSong}>
+                  💾 &nbsp;{user ? 'Save to account' : 'Save to device'}
+                </button>
               </div>
             )}
           </div>
@@ -622,6 +644,10 @@ export default function App() {
 
       {selectedChord && (
         <ChordDiagram chord={selectedChord} onClose={() => setSelectedChord(null)} />
+      )}
+
+      {showBuyCredits && (
+        <BuyCredits user={user} onClose={() => setShowBuyCredits(false)} />
       )}
     </div>
   );

@@ -40,10 +40,9 @@ export default async function handler(req, res) {
   const isUser = !!userId;
 
   // ── Check and update upload count ─────────────────────────
-  const today = new Date().toISOString().split('T')[0]; // "2026-05-18"
+  const today = new Date().toISOString().split('T')[0];
   const countKey = `upload_count:${identifier}:${today}`;
 
-  // Get current count from Supabase
   const { data: countData } = await supabase
     .from('upload_counts')
     .select('count')
@@ -52,22 +51,43 @@ export default async function handler(req, res) {
 
   const currentCount = countData?.count || 0;
 
-  if (currentCount >= limit) {
+  // Check extra credits for signed-in users who hit their daily limit
+  let extraCredits = 0;
+  if (userId && currentCount >= limit) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('extra_credits')
+      .eq('id', userId)
+      .single();
+    extraCredits = profile?.extra_credits || 0;
+
+    if (extraCredits > 0) {
+      // Use a credit instead of the daily limit
+      await supabase.from('profiles').update({
+        extra_credits: extraCredits - 1,
+      }).eq('id', userId);
+    } else {
+      return res.status(429).json({
+        error: `Daily limit reached. Purchase more uploads to continue, or come back tomorrow.`,
+        showBuyCredits: true,
+        limit,
+        used: currentCount,
+      });
+    }
+  } else if (currentCount >= limit) {
     return res.status(429).json({
-      error: isUser
-        ? `Daily limit reached. You've used all ${limit} uploads for today. Come back tomorrow!`
-        : `Daily limit reached. Sign in for more uploads (${LIMIT_SIGNED_IN}/day) or come back tomorrow.`,
+      error: `Daily limit reached. Sign in and purchase more uploads, or come back tomorrow for ${LIMIT_ANONYMOUS} free uploads.`,
       limit,
       used: currentCount,
     });
+  } else {
+    // Increment the daily counter
+    await supabase.from('upload_counts').upsert({
+      key: countKey,
+      count: currentCount + 1,
+      updated_at: new Date().toISOString(),
+    });
   }
-
-  // Increment the counter
-  await supabase.from('upload_counts').upsert({
-    key: countKey,
-    count: currentCount + 1,
-    updated_at: new Date().toISOString(),
-  });
 
   // ── Forward to Anthropic ───────────────────────────────────
   try {
