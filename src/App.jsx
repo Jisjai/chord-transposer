@@ -178,7 +178,7 @@ function compressImage(file) {
   });
 }
 
-async function extractChordsFromImage(imageFile) {
+async function extractChordsFromImage(imageFile, userToken = null) {
   const compressed = await compressImage(imageFile);
   const base64Image = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -187,12 +187,12 @@ async function extractChordsFromImage(imageFile) {
     reader.readAsDataURL(compressed);
   });
 
-  // ← KEY CHANGE FROM DEVELOPMENT VERSION:
-  //   We call /api/extract (our own server) instead of Anthropic directly.
-  //   No API key needed here — the server handles that securely.
+  const headers = { 'Content-Type': 'application/json' };
+  if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
+
   const response = await fetch('/api/extract', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
       max_tokens: 2000,
@@ -208,13 +208,13 @@ async function extractChordsFromImage(imageFile) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error?.error?.message || `API error: ${response.status}`);
+    throw new Error(error?.error || `API error: ${response.status}`);
   }
 
   const data = await response.json();
   const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
   if (text === 'NO_CHORDS_FOUND') throw new Error('No chords found in this image.');
-  return text;
+  return { text, uploadsRemaining: data.uploadsRemaining, uploadsLimit: data.uploadsLimit };
 }
 
 // ── localStorage ───────────────────────────────────────────────
@@ -304,6 +304,7 @@ export default function App() {
   const [fullscreen, setFullscreen]       = useState(false);
   const [selectedChord, setSelectedChord] = useState(null);
   const [copied, setCopied]               = useState(false);
+  const [uploadsRemaining, setUploadsRemaining] = useState(null);
 
   useEffect(() => {
     if (!originalText) return;
@@ -315,15 +316,20 @@ export default function App() {
     if (!file?.type.startsWith('image/')) { setStatus({ type: 'error', message: 'Please upload an image file.' }); return; }
     setStatus({ type: 'loading', message: 'Reading chords from screenshot...' });
     try {
-      const text = await extractChordsFromImage(file);
+      // Get the current session token if user is logged in
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || null;
+
+      const { text, uploadsRemaining: remaining, uploadsLimit: limit } = await extractChordsFromImage(file, token);
       const detectedKey = detectKey(text) || 'C';
       setOriginalText(text); setDisplayText(text);
       setOriginalKey(detectedKey);
       setTargetKey(detectedKey); setSemitones(0);
       setSongTitle(file.name.replace(/\.[^/.]+$/, '') || 'Untitled');
-      setStatus({ type: 'success', message: `Chords extracted! Detected key: ${detectedKey}. Adjust if needed.` });
+      setUploadsRemaining(remaining);
+      setStatus({ type: 'success', message: `Chords extracted! Detected key: ${detectedKey}. ${remaining} upload${remaining !== 1 ? 's' : ''} remaining today.` });
     } catch (e) { setStatus({ type: 'error', message: e.message }); }
-  }, [originalKey]);
+  }, [originalKey, user]);
 
   const onDrop = useCallback((e) => {
     e.preventDefault(); setDragging(false);
@@ -331,13 +337,40 @@ export default function App() {
     if (file) handleImage(file);
   }, [handleImage]);
 
-  const saveSong = () => {
+  const saveSong = async () => {
     if (!originalText) return;
-    const song = { id: Date.now(), title: songTitle || 'Untitled', originalText, originalKey, savedAt: new Date().toLocaleDateString() };
-    const updated = [song, ...savedSongs.filter(s => s.title !== song.title)];
-    setSavedSongs(updated); saveSongs(updated);
-    setStatus({ type: 'success', message: `"${song.title}" saved to device.` });
+    const song = { title: songTitle || 'Untitled', original_text: originalText, original_key: originalKey };
+
+    if (user) {
+      // Save to Supabase cloud
+      const { error } = await supabase.from('songs').upsert({
+        ...song,
+        user_id: user.id,
+        saved_at: new Date().toISOString(),
+      });
+      if (error) { setStatus({ type: 'error', message: 'Failed to save to cloud.' }); return; }
+      setStatus({ type: 'success', message: `"${song.title}" saved to your account.` });
+      loadCloudSongs();
+    } else {
+      // Save to localStorage
+      const localSong = { id: Date.now(), title: song.title, originalText, originalKey, savedAt: new Date().toLocaleDateString() };
+      const updated = [localSong, ...savedSongs.filter(s => s.title !== localSong.title)];
+      setSavedSongs(updated); saveSongs(updated);
+      setStatus({ type: 'success', message: `"${song.title}" saved to device. Sign in to save to your account.` });
+    }
   };
+
+  const loadCloudSongs = async () => {
+    if (!user) return;
+    const { data } = await supabase.from('songs').select('*').eq('user_id', user.id).order('saved_at', { ascending: false });
+    if (data) setSavedSongs(data.map(s => ({ id: s.id, title: s.title, originalText: s.original_text, originalKey: s.original_key, savedAt: new Date(s.saved_at).toLocaleDateString() })));
+  };
+
+  // Load cloud songs when user logs in
+  useEffect(() => {
+    if (user) loadCloudSongs();
+    else setSavedSongs(loadSongs());
+  }, [user]);
 
   const loadSong = (song) => {
     setOriginalText(song.originalText); setDisplayText(song.originalText);
@@ -346,9 +379,14 @@ export default function App() {
     setStatus({ type: 'success', message: `Loaded "${song.title}"` });
   };
 
-  const deleteSong = (id) => {
-    const updated = savedSongs.filter(s => s.id !== id);
-    setSavedSongs(updated); saveSongs(updated);
+  const deleteSong = async (id) => {
+    if (user) {
+      await supabase.from('songs').delete().eq('id', id);
+      loadCloudSongs();
+    } else {
+      const updated = savedSongs.filter(s => s.id !== id);
+      setSavedSongs(updated); saveSongs(updated);
+    }
   };
 
   const copyToClipboard = () => {
