@@ -9,7 +9,7 @@ Upload a screenshot of a chord sheet → transpose to any key instantly.
 ### What you need first
 - A free account at github.com
 - A free account at vercel.com (sign up with GitHub)
-- Your Anthropic API key from console.anthropic.com
+- A Gemini API key from aistudio.google.com (free tier is fine to start)
 
 ---
 
@@ -47,8 +47,8 @@ Your app is now live! But the API won't work yet — we need to add your key.
 
 1. In Vercel, go to your project → **Settings** → **Environment Variables**
 2. Add a new variable:
-   - **Name:** `ANTHROPIC_API_KEY`
-   - **Value:** your key (sk-ant-...)
+   - **Name:** `GEMINI_API_KEY`
+   - **Value:** your Gemini key
    - **Environment:** Production, Preview, Development (tick all three)
 3. Click **Save**
 4. Go to **Deployments** → click the three dots on your latest deployment → **Redeploy**
@@ -76,7 +76,7 @@ Vercel automatically redeploys within about 30 seconds.
 ```
 chord-transposer/
 ├── api/
-│   └── extract.js        ← Vercel serverless function (holds API key)
+│   └── extract.js        ← Vercel serverless function (calls Gemini, holds API key)
 ├── src/
 │   ├── main.jsx          ← React entry point
 │   └── App.jsx           ← The full app
