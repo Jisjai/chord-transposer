@@ -145,19 +145,8 @@ function ColoredSheet({ text, onChordClick }) {
 }
 
 // ── AI Extractor ───────────────────────────────────────────────
-// NOTE: In the deployed version, calls go to /api/extract (our Vercel
-// serverless function) instead of directly to Anthropic.
-// The serverless function adds the API key server-side.
-
-const EXTRACTION_PROMPT = `You are reading a screenshot of a song with lyrics and chords.
-Extract the full content and return it as plain text, following these rules:
-1. Preserve the layout exactly: if chords appear above a lyric line, keep them on the line above.
-2. Keep the original chord symbols exactly as written (e.g. Am7, F#, Bb/D).
-3. Preserve the spacing between chords on chord lines.
-4. Do not add, remove, or correct anything. Transcribe what you see.
-5. Do not use markdown, headers, or formatting. Plain text only.
-6. If you cannot find any chords in the image, respond with exactly: NO_CHORDS_FOUND
-Return only the extracted text, nothing else.`;
+// Calls go to /api/extract (our Vercel serverless function). The browser
+// only sends the image; the prompt, model and API key live server-side.
 
 // Compress image to max 1000px wide at 80% quality before sending to API
 function compressImage(file) {
@@ -194,17 +183,7 @@ async function extractChordsFromImage(imageFile, userToken = null) {
   const response = await fetch('/api/extract', {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 2000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
-          { type: 'text', text: EXTRACTION_PROMPT },
-        ],
-      }],
-    }),
+    body: JSON.stringify({ image: base64Image }),
   });
 
   if (!response.ok) {
@@ -213,7 +192,7 @@ async function extractChordsFromImage(imageFile, userToken = null) {
   }
 
   const data = await response.json();
-  const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  const text = (data.text || '').trim();
   if (text === 'NO_CHORDS_FOUND') throw new Error('No chords found in this image.');
   return { text, uploadsRemaining: data.uploadsRemaining, uploadsLimit: data.uploadsLimit };
 }
