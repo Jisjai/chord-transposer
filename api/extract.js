@@ -1,6 +1,6 @@
 // api/extract.js
 // ─────────────────────────────────────────────────────────────
-// Vercel serverless function — sends a chord-sheet image to Google Gemini.
+// Vercel serverless function — sends a chord-sheet image to Claude (Anthropic API).
 //
 // The browser only sends { image: <base64 JPEG> }. Everything else
 // (model, prompt, token cap) is fixed here, so this endpoint can't be
@@ -17,11 +17,11 @@ import { createClient } from '@supabase/supabase-js';
 const LIMIT_ANONYMOUS = 2;
 const LIMIT_SIGNED_IN = 5;
 
-// Override with the GEMINI_MODEL env var in Vercel to try another model.
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-// Gemini counts its internal "thinking" against this cap, so it's set
-// higher than the ~600 tokens a chord sheet actually needs.
-const MAX_TOKENS = 4000;
+// Override with the CLAUDE_MODEL env var in Vercel to try another model.
+// Haiku is Anthropic's cheapest model and reads images well, which is all this needs.
+const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-5-5';
+// A chord sheet is usually ~600 tokens of text; this leaves room for long songs.
+const MAX_TOKENS = 3000;
 
 // The app compresses images to ≤1000px JPEG, which is well under this.
 const MAX_IMAGE_BASE64_CHARS = 4_000_000; // ≈3 MB image
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured.' });
 
   // ── Validate input before counting it as an upload ─────────
@@ -132,45 +132,43 @@ export default async function handler(req, res) {
     updated_at: new Date().toISOString(),
   });
 
-  // ── Send to Gemini (fixed request; only the image comes from the user) ──
+  // ── Send to Claude (fixed request; only the image comes from the user) ──
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
-    const response = await fetch(url, {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        contents: [{
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: 0, // transcription: same image in, same text out
+        messages: [{
           role: 'user',
-          parts: [
-            { inline_data: { mime_type: 'image/jpeg', data: image } },
-            { text: EXTRACTION_PROMPT },
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
+            { type: 'text', text: EXTRACTION_PROMPT },
           ],
         }],
-        generationConfig: {
-          maxOutputTokens: MAX_TOKENS,
-          temperature: 0,
-          thinkingConfig: { thinkingLevel: 'low' }, // transcription doesn't need much reasoning
-        },
       }),
     });
 
     const data = await response.json();
     if (!response.ok) {
-      console.error('Gemini API error:', response.status, data?.error?.message);
+      console.error('Claude API error:', response.status, data?.error?.type, data?.error?.message);
       return res.status(502).json({ error: 'Could not read the image. Please try again.' });
     }
 
-    const candidate = data.candidates?.[0];
-    const text = (candidate?.content?.parts || [])
-      .filter(p => typeof p.text === 'string' && !p.thought)
-      .map(p => p.text)
+    // Claude replies with a list of content blocks; we only want the text ones.
+    const text = (data.content || [])
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
       .join('');
 
     if (!text) {
-      console.error('Gemini returned no text:', candidate?.finishReason, data?.promptFeedback?.blockReason);
+      console.error('Claude returned no text:', data.stop_reason);
       return res.status(502).json({ error: 'Could not read the image. Please try again.' });
     }
 
