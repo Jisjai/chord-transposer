@@ -144,7 +144,6 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: MAX_TOKENS,
-        temperature: 0, // transcription: same image in, same text out
         messages: [{
           role: 'user',
           content: [
